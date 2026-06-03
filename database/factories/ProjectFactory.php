@@ -19,7 +19,7 @@ class ProjectFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'name' => rtrim(fake()->unique()->catchPhrase(), '.'),
+            'name' => fake()->unique()->company(),
             'description' => fake()->optional()->sentence(12),
             'status' => fake()->randomElement(ProjectStatus::cases()),
         ];

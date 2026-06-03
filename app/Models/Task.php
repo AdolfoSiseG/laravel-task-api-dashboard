@@ -11,7 +11,23 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int $project_id
+ * @property int $created_by
+ * @property int|null $assigned_to
+ * @property string $title
+ * @property string|null $description
+ * @property TaskStatus $status
+ * @property TaskPriority $priority
+ * @property Carbon|null $due_date
+ * @property Carbon|null $completed_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ */
 class Task extends Model
 {
     /** @use HasFactory<TaskFactory> */
@@ -29,6 +45,9 @@ class Task extends Model
         'created_by',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -56,21 +75,33 @@ class Task extends Model
 
     // ----- Relationships -----
 
+    /**
+     * @return BelongsTo<Project, $this>
+     */
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
+    /**
+     * @return HasMany<TaskComment, $this>
+     */
     public function comments(): HasMany
     {
         return $this->hasMany(TaskComment::class);
@@ -78,16 +109,28 @@ class Task extends Model
 
     // ----- Scopes -----
 
+    /**
+     * @param  Builder<Task>  $query
+     * @return Builder<Task>
+     */
     public function scopeStatus(Builder $query, TaskStatus $status): Builder
     {
         return $query->where('status', $status->value);
     }
 
+    /**
+     * @param  Builder<Task>  $query
+     * @return Builder<Task>
+     */
     public function scopePriority(Builder $query, TaskPriority $priority): Builder
     {
         return $query->where('priority', $priority->value);
     }
 
+    /**
+     * @param  Builder<Task>  $query
+     * @return Builder<Task>
+     */
     public function scopeOverdue(Builder $query): Builder
     {
         return $query->whereNotNull('due_date')
@@ -95,10 +138,18 @@ class Task extends Model
             ->where('status', '!=', TaskStatus::Done->value);
     }
 
-    /** Tasks inside any project the user owns or collaborates on. */
+    /**
+     * Tasks inside any project the user owns or collaborates on.
+     *
+     * @param  Builder<Task>  $query
+     * @return Builder<Task>
+     */
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
-        return $query->whereHas('project', fn (Builder $project) => $project->accessibleBy($user));
+        return $query->whereHas('project', function (Builder $project) use ($user) {
+            $project->where('user_id', $user->id)
+                ->orWhereHas('members', fn (Builder $members) => $members->whereKey($user->id));
+        });
     }
 
     // ----- Computed -----

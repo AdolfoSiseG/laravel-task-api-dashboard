@@ -9,8 +9,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $email
+ * @property Carbon|null $email_verified_at
+ * @property string $password
+ * @property string|null $remember_token
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 class User extends Authenticatable // implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
@@ -50,27 +61,41 @@ class User extends Authenticatable // implements MustVerifyEmail
         ];
     }
 
-    // ----- Relationships -----
-
-    /** Projects this user owns. */
+    /**
+     * Projects this user owns.
+     *
+     * @return HasMany<Project, $this>
+     */
     public function projects(): HasMany
     {
         return $this->hasMany(Project::class);
     }
 
-    /** Projects this user collaborates on (via the project_user pivot). */
+    /**
+     * Projects this user collaborates on (via the project_user pivot).
+     *
+     * @return BelongsToMany<Project, $this>
+     */
     public function projectMemberships(): BelongsToMany
     {
         return $this->belongsToMany(Project::class)->withTimestamps();
     }
 
-    /** Tasks this user created. */
+    /**
+     * Tasks this user created.
+     *
+     * @return HasMany<Task, $this>
+     */
     public function createdTasks(): HasMany
     {
         return $this->hasMany(Task::class, 'created_by');
     }
 
-    /** Tasks assigned to this user. */
+    /**
+     * Tasks assigned to this user.
+     *
+     * @return HasMany<Task, $this>
+     */
     public function assignedTasks(): HasMany
     {
         return $this->hasMany(Task::class, 'assigned_to');

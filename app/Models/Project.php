@@ -12,7 +12,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $name
+ * @property string|null $description
+ * @property ProjectStatus $status
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read int|null $tasks_count
+ * @property-read int|null $completed_tasks_count
+ */
 class Project extends Model
 {
     /** @use HasFactory<ProjectFactory> */
@@ -24,6 +37,9 @@ class Project extends Model
         'status',
     ];
 
+    /**
+     * @return array<string, string>
+     */
     protected function casts(): array
     {
         return [
@@ -33,18 +49,29 @@ class Project extends Model
 
     // ----- Relationships -----
 
-    /** The user who owns the project. */
+    /**
+     * The user who owns the project.
+     *
+     * @return BelongsTo<User, $this>
+     */
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    /** Everyone with access to the project (the owner is also stored as a member). */
+    /**
+     * Everyone with access to the project (the owner is also stored as a member).
+     *
+     * @return BelongsToMany<User, $this>
+     */
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class)->withTimestamps();
     }
 
+    /**
+     * @return HasMany<Task, $this>
+     */
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class);
@@ -52,12 +79,21 @@ class Project extends Model
 
     // ----- Scopes -----
 
+    /**
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
     public function scopeOwnedBy(Builder $query, User $user): Builder
     {
         return $query->where('user_id', $user->id);
     }
 
-    /** Projects a user can access: owned OR collaborated on. */
+    /**
+     * Projects a user can access: owned OR collaborated on.
+     *
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
         return $query->where(function (Builder $query) use ($user) {
@@ -66,12 +102,21 @@ class Project extends Model
         });
     }
 
+    /**
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
     public function scopeStatus(Builder $query, ProjectStatus $status): Builder
     {
         return $query->where('status', $status->value);
     }
 
-    /** Eager-load task counts so progress() never triggers an N+1 query. */
+    /**
+     * Eager-load task counts so progress() never triggers an N+1 query.
+     *
+     * @param  Builder<Project>  $query
+     * @return Builder<Project>
+     */
     public function scopeWithProgress(Builder $query): Builder
     {
         return $query->withCount([
@@ -82,17 +127,19 @@ class Project extends Model
 
     // ----- Computed -----
 
-    /** Completion percentage (0-100); uses withProgress() counts when they are loaded. */
+    /**
+     * Completion percentage (0-100); uses withProgress() counts when they are loaded.
+     */
     public function progress(): int
     {
-        $total = $this->attributes['tasks_count'] ?? $this->tasks()->count();
+        $total = (int) ($this->attributes['tasks_count'] ?? $this->tasks()->count());
 
         if ($total === 0) {
             return 0;
         }
 
-        $completed = $this->attributes['completed_tasks_count']
-            ?? $this->tasks()->where('status', TaskStatus::Done->value)->count();
+        $completed = (int) ($this->attributes['completed_tasks_count']
+            ?? $this->tasks()->where('status', TaskStatus::Done->value)->count());
 
         return (int) round($completed / $total * 100);
     }
