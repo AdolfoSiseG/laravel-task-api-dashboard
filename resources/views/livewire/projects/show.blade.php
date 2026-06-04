@@ -4,6 +4,7 @@ use App\Enums\TaskPriority;
 use App\Enums\TaskStatus;
 use App\Models\Project;
 use App\Models\Task;
+use App\Models\TaskComment;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -28,6 +29,12 @@ new #[Layout('components.layouts.app')] class extends Component
     public string $taskDueDate = '';
 
     public string $taskColumnStatus = '';
+
+    public bool $showTaskDetail = false;
+
+    public ?int $viewingTaskId = null;
+
+    public string $commentBody = '';
 
     public function mount(Project $project): void
     {
@@ -143,6 +150,54 @@ new #[Layout('components.layouts.app')] class extends Component
         $task->delete();
     }
 
+    public function openTask(int $taskId): void
+    {
+        $task = $this->findProjectTask($taskId);
+        $this->authorize('view', $task);
+
+        $this->viewingTaskId = $task->id;
+        $this->commentBody = '';
+        $this->resetValidation();
+        $this->showTaskDetail = true;
+    }
+
+    public function updatedShowTaskDetail(bool $value): void
+    {
+        if (! $value) {
+            $this->viewingTaskId = null;
+            $this->commentBody = '';
+            $this->resetValidation();
+        }
+    }
+
+    public function addComment(): void
+    {
+        abort_unless($this->viewingTaskId !== null, 404);
+
+        $task = $this->findProjectTask($this->viewingTaskId);
+        $this->authorize('view', $task);
+
+        $validated = $this->validate([
+            'commentBody' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $comment = new TaskComment(['body' => $validated['commentBody']]);
+        $comment->user_id = Auth::id();
+        $task->comments()->save($comment);
+
+        $this->commentBody = '';
+    }
+
+    public function deleteComment(int $commentId): void
+    {
+        $comment = TaskComment::query()
+            ->whereHas('task', fn ($query) => $query->where('project_id', $this->project->id))
+            ->findOrFail($commentId);
+
+        $this->authorize('delete', $comment);
+        $comment->delete();
+    }
+
     private function findProjectTask(int $taskId): Task
     {
         return $this->project->tasks()->findOrFail($taskId);
@@ -173,6 +228,13 @@ new #[Layout('components.layouts.app')] class extends Component
             'members' => $this->project->members,
             'statuses' => TaskStatus::cases(),
             'priorities' => TaskPriority::cases(),
+            'viewingTask' => $this->viewingTaskId === null ? null : $this->project->tasks()
+                ->with([
+                    'assignee:id,name',
+                    'creator:id,name',
+                    'comments' => fn ($query) => $query->with('author:id,name')->orderBy('created_at'),
+                ])
+                ->find($this->viewingTaskId),
         ];
     }
 }; ?>
@@ -231,7 +293,7 @@ new #[Layout('components.layouts.app')] class extends Component
                     @forelse ($column['tasks'] as $task)
                         <div x-sort:item="{{ $task->id }}" wire:key="task-{{ $task->id }}" class="cursor-grab rounded-lg border border-zinc-200 bg-white p-3 shadow-sm active:cursor-grabbing dark:border-zinc-700 dark:bg-zinc-800">
                             <div class="flex items-start justify-between gap-2">
-                                <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ $task->title }}</p>
+                                <button type="button" wire:click="openTask({{ $task->id }})" class="text-left text-sm font-medium text-zinc-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400">{{ $task->title }}</button>
                                 <flux:dropdown position="bottom" align="end">
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" aria-label="Task actions" />
                                     <flux:menu>
@@ -316,5 +378,80 @@ new #[Layout('components.layouts.app')] class extends Component
                 <flux:button type="submit" variant="primary" wire:target="saveTask" wire:loading.attr="disabled">{{ $editingTaskId ? 'Save changes' : 'Add task' }}</flux:button>
             </div>
         </form>
+    </x-modal>
+
+    {{-- Task detail + comments --}}
+    <x-modal wire:model="showTaskDetail" size="max-w-2xl">
+        @if ($viewingTask)
+            <div class="space-y-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <flux:heading size="lg">{{ $viewingTask->title }}</flux:heading>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <flux:badge :color="$viewingTask->status->color()" size="sm">{{ $viewingTask->status->label() }}</flux:badge>
+                            <flux:badge :color="$viewingTask->priority->color()" size="sm">{{ $viewingTask->priority->label() }}</flux:badge>
+                            @if ($viewingTask->due_date)
+                                <span @class([
+                                    'text-xs',
+                                    'font-medium text-rose-600 dark:text-rose-400' => $viewingTask->isOverdue(),
+                                    'text-zinc-500 dark:text-zinc-400' => ! $viewingTask->isOverdue(),
+                                ])>Due {{ $viewingTask->due_date->isoFormat('MMM D, YYYY') }}</span>
+                            @endif
+                        </div>
+                    </div>
+                    <flux:button variant="ghost" size="sm" icon="x-mark" aria-label="Close" x-on:click="open = false" />
+                </div>
+
+                @if ($viewingTask->description)
+                    <p class="text-sm whitespace-pre-line text-zinc-600 dark:text-zinc-300">{{ $viewingTask->description }}</p>
+                @endif
+
+                <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    <div class="flex items-center gap-2">
+                        <span>Assignee:</span>
+                        @if ($viewingTask->assignee)
+                            <span class="inline-flex items-center gap-1.5"><x-user-avatar :user="$viewingTask->assignee" size="sm" /> {{ $viewingTask->assignee->name }}</span>
+                        @else
+                            <span>Unassigned</span>
+                        @endif
+                    </div>
+                    <div>Created by {{ $viewingTask->creator->name }}</div>
+                </div>
+
+                <flux:separator />
+
+                {{-- Comments thread --}}
+                <div>
+                    <h4 class="text-sm font-semibold text-zinc-900 dark:text-white">Comments ({{ $viewingTask->comments->count() }})</h4>
+
+                    <div class="mt-3 max-h-64 space-y-4 overflow-y-auto pr-1">
+                        @forelse ($viewingTask->comments as $comment)
+                            <div wire:key="comment-{{ $comment->id }}" class="flex gap-3">
+                                <x-user-avatar :user="$comment->author" size="md" />
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div class="text-sm">
+                                            <span class="font-medium text-zinc-900 dark:text-white">{{ $comment->author->name }}</span>
+                                            <span class="ml-1 text-xs text-zinc-400">{{ $comment->created_at->diffForHumans() }}</span>
+                                        </div>
+                                        @can('delete', $comment)
+                                            <button type="button" wire:click="deleteComment({{ $comment->id }})" wire:confirm="Delete this comment?" class="text-xs text-zinc-400 hover:text-rose-500">Delete</button>
+                                        @endcan
+                                    </div>
+                                    <p class="mt-0.5 text-sm whitespace-pre-line text-zinc-600 dark:text-zinc-300">{{ $comment->body }}</p>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-sm text-zinc-500 dark:text-zinc-400">No comments yet. Start the conversation.</p>
+                        @endforelse
+                    </div>
+
+                    <form wire:submit="addComment" class="mt-4 flex items-start gap-2">
+                        <flux:textarea wire:model="commentBody" rows="2" placeholder="Write a comment..." class="flex-1" />
+                        <flux:button type="submit" variant="primary" wire:target="addComment" wire:loading.attr="disabled">Post</flux:button>
+                    </form>
+                </div>
+            </div>
+        @endif
     </x-modal>
 </div>

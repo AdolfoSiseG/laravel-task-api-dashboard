@@ -23,9 +23,9 @@ class TaskComment extends Model
     /** @use HasFactory<TaskCommentFactory> */
     use HasFactory, SoftDeletes;
 
+    // task_id and user_id are set via the relationship and the authenticated user,
+    // never mass-assigned.
     protected $fillable = [
-        'task_id',
-        'user_id',
         'body',
     ];
 

@@ -1,4 +1,4 @@
-@props(['title' => null])
+@props(['title' => null, 'size' => 'max-w-lg'])
 
 {{--
     Accessible modal dialog: role/aria semantics, focus trap + scroll lock (x-trap,
@@ -28,7 +28,7 @@
         x-show="open"
         x-transition
         x-trap.noscroll="open"
-        class="relative w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+        class="relative max-h-[90vh] w-full {{ $size }} overflow-y-auto rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
     >
         @isset($title)
             <flux:heading size="lg">{{ $title }}</flux:heading>
