@@ -43,6 +43,16 @@ new #[Layout('components.layouts.auth')] class extends Component {
     }
 
     /**
+     * Log in instantly with the seeded demo account.
+     */
+    public function loginAsDemo(): void
+    {
+        $this->email = 'demo@example.com';
+        $this->password = 'password';
+        $this->login();
+    }
+
+    /**
      * Ensure the authentication request is not rate limited.
      */
     protected function ensureIsNotRateLimited(): void
@@ -108,6 +118,17 @@ new #[Layout('components.layouts.auth')] class extends Component {
             <flux:button variant="primary" type="submit" class="w-full">{{ __('Log in') }}</flux:button>
         </div>
     </form>
+
+    <flux:separator text="{{ __('or') }}" />
+
+    <div class="flex flex-col gap-2">
+        <flux:button variant="filled" wire:click="loginAsDemo" wire:loading.attr="disabled" class="w-full">
+            Log in as demo
+        </flux:button>
+        <p class="text-center text-xs text-zinc-500 dark:text-zinc-400">
+            One-click access as <span class="font-medium">demo@example.com</span>
+        </p>
+    </div>
 
     <div class="space-x-1 text-center text-sm text-zinc-600 dark:text-zinc-400">
         Don't have an account?
