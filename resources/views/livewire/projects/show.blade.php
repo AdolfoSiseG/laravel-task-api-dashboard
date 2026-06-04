@@ -109,6 +109,33 @@ new #[Layout('components.layouts.app')] class extends Component
         $task->update(['status' => TaskStatus::from($status)]);
     }
 
+    /** Persist a drag-and-drop move: drop $taskId into $status at index $position. */
+    public function reorderTask(string $status, int $taskId, int $position): void
+    {
+        $statusEnum = TaskStatus::from($status);
+        $task = $this->findProjectTask($taskId);
+        $this->authorize('update', $task);
+
+        // Move into the target column (the saving hook keeps completed_at in sync)...
+        $task->update(['status' => $statusEnum]);
+
+        // ...then renumber that column so positions stay contiguous.
+        $ids = $this->project->tasks()
+            ->where('status', $statusEnum->value)
+            ->orderBy('position')
+            ->orderBy('id')
+            ->pluck('id')
+            ->all();
+
+        $ids = array_values(array_filter($ids, fn (int $id): bool => $id !== $taskId));
+        $position = max(0, min($position, count($ids)));
+        array_splice($ids, $position, 0, [$taskId]);
+
+        foreach ($ids as $index => $id) {
+            Task::whereKey($id)->update(['position' => $index]);
+        }
+    }
+
     public function deleteTask(int $taskId): void
     {
         $task = $this->findProjectTask($taskId);
@@ -133,7 +160,8 @@ new #[Layout('components.layouts.app')] class extends Component
 
         $grouped = $this->project->tasks()
             ->with('assignee:id,name')
-            ->orderBy('created_at')
+            ->orderBy('position')
+            ->orderBy('id')
             ->get()
             ->groupBy(fn (Task $task) => $task->status->value);
 
@@ -185,7 +213,7 @@ new #[Layout('components.layouts.app')] class extends Component
     <div class="grid gap-4 md:grid-cols-3">
         @foreach ($columns as $column)
             @php($status = $column['status'])
-            <div class="flex flex-col rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/40">
+            <div wire:key="column-{{ $status->value }}" class="flex flex-col rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/40">
                 <div class="mb-3 flex items-center justify-between px-1">
                     <div class="flex items-center gap-2">
                         <flux:badge :color="$status->color()" size="sm">{{ $status->label() }}</flux:badge>
@@ -194,9 +222,14 @@ new #[Layout('components.layouts.app')] class extends Component
                     <flux:button size="xs" variant="ghost" icon="plus" aria-label="Add task" wire:click="addTask('{{ $status->value }}')" />
                 </div>
 
-                <div class="flex flex-1 flex-col gap-2">
+                <div
+                    x-sort:group="board"
+                    x-sort="$wire.reorderTask('{{ $status->value }}', $item, $position)"
+                    x-sort:config="{ animation: 150, ghostClass: 'opacity-40' }"
+                    class="flex min-h-12 flex-1 flex-col gap-2"
+                >
                     @forelse ($column['tasks'] as $task)
-                        <div wire:key="task-{{ $task->id }}" class="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                        <div x-sort:item="{{ $task->id }}" wire:key="task-{{ $task->id }}" class="cursor-grab rounded-lg border border-zinc-200 bg-white p-3 shadow-sm active:cursor-grabbing dark:border-zinc-700 dark:bg-zinc-800">
                             <div class="flex items-start justify-between gap-2">
                                 <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ $task->title }}</p>
                                 <flux:dropdown position="bottom" align="end">

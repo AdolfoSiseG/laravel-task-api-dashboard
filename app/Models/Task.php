@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $description
  * @property TaskStatus $status
  * @property TaskPriority $priority
+ * @property int $position
  * @property Carbon|null $due_date
  * @property Carbon|null $completed_at
  * @property Carbon|null $created_at
