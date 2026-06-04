@@ -13,6 +13,7 @@ Volt::route('dashboard', 'dashboard')
 
 Route::middleware(['auth'])->group(function () {
     Volt::route('projects', 'projects.index')->name('projects');
+    Volt::route('projects/{project}', 'projects.show')->name('projects.show');
 
     Route::redirect('settings', 'settings/profile');
 

@@ -1,0 +1,290 @@
+<?php
+
+use App\Enums\TaskPriority;
+use App\Enums\TaskStatus;
+use App\Models\Project;
+use App\Models\Task;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
+use Livewire\Attributes\Layout;
+use Livewire\Volt\Component;
+
+new #[Layout('components.layouts.app')] class extends Component
+{
+    public Project $project;
+
+    public bool $showTaskForm = false;
+
+    public ?int $editingTaskId = null;
+
+    public string $taskTitle = '';
+
+    public string $taskDescription = '';
+
+    public string $taskPriority = '';
+
+    public ?int $taskAssignee = null;
+
+    public string $taskDueDate = '';
+
+    public string $taskColumnStatus = '';
+
+    public function mount(Project $project): void
+    {
+        $this->authorize('view', $project);
+        $this->project = $project;
+        $this->taskPriority = TaskPriority::Medium->value;
+        $this->taskColumnStatus = TaskStatus::Todo->value;
+    }
+
+    public function addTask(string $status): void
+    {
+        $this->authorize('view', $this->project);
+        $this->reset('editingTaskId', 'taskTitle', 'taskDescription', 'taskAssignee', 'taskDueDate');
+        $this->taskPriority = TaskPriority::Medium->value;
+        $this->taskColumnStatus = TaskStatus::from($status)->value;
+        $this->resetValidation();
+        $this->showTaskForm = true;
+    }
+
+    public function editTask(int $taskId): void
+    {
+        $task = $this->findProjectTask($taskId);
+        $this->authorize('update', $task);
+
+        $this->editingTaskId = $task->id;
+        $this->taskTitle = $task->title;
+        $this->taskDescription = (string) $task->description;
+        $this->taskPriority = $task->priority->value;
+        $this->taskAssignee = $task->assigned_to;
+        $this->taskDueDate = $task->due_date?->format('Y-m-d') ?? '';
+        $this->taskColumnStatus = $task->status->value;
+        $this->resetValidation();
+        $this->showTaskForm = true;
+    }
+
+    public function saveTask(): void
+    {
+        $memberIds = $this->project->members()->pluck('users.id')->all();
+
+        $validated = $this->validate([
+            'taskTitle' => ['required', 'string', 'max:160'],
+            'taskDescription' => ['nullable', 'string', 'max:2000'],
+            'taskPriority' => ['required', Rule::enum(TaskPriority::class)],
+            'taskAssignee' => ['nullable', Rule::in($memberIds)],
+            'taskDueDate' => ['nullable', 'date'],
+            'taskColumnStatus' => ['required', Rule::enum(TaskStatus::class)],
+        ]);
+
+        $attributes = [
+            'title' => $validated['taskTitle'],
+            'description' => $validated['taskDescription'] ?: null,
+            'priority' => $validated['taskPriority'],
+            'assigned_to' => $validated['taskAssignee'] ?: null,
+            'due_date' => $validated['taskDueDate'] ?: null,
+            'status' => $validated['taskColumnStatus'],
+        ];
+
+        if ($this->editingTaskId !== null) {
+            $task = $this->findProjectTask($this->editingTaskId);
+            $this->authorize('update', $task);
+            $task->update($attributes);
+        } else {
+            $this->authorize('view', $this->project);
+            $this->project->tasks()->create($attributes + ['created_by' => Auth::id()]);
+        }
+
+        $this->showTaskForm = false;
+        $this->reset('editingTaskId', 'taskTitle', 'taskDescription', 'taskAssignee', 'taskDueDate');
+    }
+
+    public function moveTask(int $taskId, string $status): void
+    {
+        $task = $this->findProjectTask($taskId);
+        $this->authorize('update', $task);
+        $task->update(['status' => TaskStatus::from($status)]);
+    }
+
+    public function deleteTask(int $taskId): void
+    {
+        $task = $this->findProjectTask($taskId);
+        $this->authorize('delete', $task);
+        $task->delete();
+    }
+
+    private function findProjectTask(int $taskId): Task
+    {
+        return $this->project->tasks()->findOrFail($taskId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function with(): array
+    {
+        $this->project->loadMissing('owner:id,name', 'members:id,name')->loadCount([
+            'tasks',
+            'tasks as completed_tasks_count' => fn ($query) => $query->where('status', TaskStatus::Done->value),
+        ]);
+
+        $grouped = $this->project->tasks()
+            ->with('assignee:id,name')
+            ->orderBy('created_at')
+            ->get()
+            ->groupBy(fn (Task $task) => $task->status->value);
+
+        return [
+            'columns' => collect(TaskStatus::cases())->map(fn (TaskStatus $status) => [
+                'status' => $status,
+                'tasks' => $grouped->get($status->value, collect()),
+            ]),
+            'members' => $this->project->members,
+            'statuses' => TaskStatus::cases(),
+            'priorities' => TaskPriority::cases(),
+        ];
+    }
+}; ?>
+
+<div class="space-y-6">
+    {{-- Header --}}
+    <div>
+        <a href="{{ route('projects') }}" wire:navigate class="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200">
+            <flux:icon.chevron-left variant="micro" /> Projects
+        </a>
+
+        <div class="mt-2 flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <div class="flex items-center gap-3">
+                    <flux:heading size="xl">{{ $project->name }}</flux:heading>
+                    <flux:badge :color="$project->status->color()">{{ $project->status->label() }}</flux:badge>
+                </div>
+                @if ($project->description)
+                    <p class="mt-1 max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">{{ $project->description }}</p>
+                @endif
+            </div>
+
+            <div class="flex items-center gap-5">
+                <div class="text-right">
+                    <div class="text-2xl font-bold text-zinc-900 dark:text-white">{{ $project->progress() }}%</div>
+                    <div class="text-xs text-zinc-400">complete</div>
+                </div>
+                <div class="flex -space-x-2">
+                    @foreach ($members->take(5) as $member)
+                        <span title="{{ $member->name }}" class="flex size-8 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-xs font-medium text-indigo-700 dark:border-zinc-800 dark:bg-indigo-500/20 dark:text-indigo-300">{{ $member->initials() }}</span>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Board --}}
+    <div class="grid gap-4 md:grid-cols-3">
+        @foreach ($columns as $column)
+            @php($status = $column['status'])
+            <div class="flex flex-col rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/40">
+                <div class="mb-3 flex items-center justify-between px-1">
+                    <div class="flex items-center gap-2">
+                        <flux:badge :color="$status->color()" size="sm">{{ $status->label() }}</flux:badge>
+                        <span class="text-sm text-zinc-400">{{ $column['tasks']->count() }}</span>
+                    </div>
+                    <flux:button size="xs" variant="ghost" icon="plus" aria-label="Add task" wire:click="addTask('{{ $status->value }}')" />
+                </div>
+
+                <div class="flex flex-1 flex-col gap-2">
+                    @forelse ($column['tasks'] as $task)
+                        <div wire:key="task-{{ $task->id }}" class="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+                            <div class="flex items-start justify-between gap-2">
+                                <p class="text-sm font-medium text-zinc-900 dark:text-white">{{ $task->title }}</p>
+                                <flux:dropdown position="bottom" align="end">
+                                    <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" aria-label="Task actions" />
+                                    <flux:menu>
+                                        @foreach ($statuses as $s)
+                                            @if ($s->value !== $task->status->value)
+                                                <flux:menu.item wire:click="moveTask({{ $task->id }}, '{{ $s->value }}')">Move to {{ $s->label() }}</flux:menu.item>
+                                            @endif
+                                        @endforeach
+                                        <flux:menu.separator />
+                                        <flux:menu.item icon="pencil-square" wire:click="editTask({{ $task->id }})">Edit</flux:menu.item>
+                                        <flux:menu.item icon="trash" variant="danger" wire:click="deleteTask({{ $task->id }})" wire:confirm="Delete this task?">Delete</flux:menu.item>
+                                    </flux:menu>
+                                </flux:dropdown>
+                            </div>
+
+                            @if ($task->description)
+                                <p class="mt-1 line-clamp-2 text-xs text-zinc-500 dark:text-zinc-400">{{ $task->description }}</p>
+                            @endif
+
+                            <div class="mt-3 flex items-center justify-between">
+                                <flux:badge :color="$task->priority->color()" size="sm">{{ $task->priority->label() }}</flux:badge>
+                                <div class="flex items-center gap-2">
+                                    @if ($task->due_date)
+                                        <span @class([
+                                            'text-xs',
+                                            'font-medium text-rose-600 dark:text-rose-400' => $task->isOverdue(),
+                                            'text-zinc-400' => ! $task->isOverdue(),
+                                        ])>{{ $task->due_date->isoFormat('MMM D') }}</span>
+                                    @endif
+                                    @if ($task->assignee)
+                                        <span title="{{ $task->assignee->name }}" class="flex size-6 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">{{ $task->assignee->initials() }}</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                    @empty
+                        <button type="button" wire:click="addTask('{{ $status->value }}')" class="rounded-lg border border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-400 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-zinc-700">
+                            + Add a task
+                        </button>
+                    @endforelse
+                </div>
+            </div>
+        @endforeach
+    </div>
+
+    {{-- Task modal --}}
+    <div
+        x-data="{ open: @entangle('showTaskForm') }"
+        x-show="open"
+        x-cloak
+        @keydown.escape.window="open = false"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    >
+        <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" @click="open = false"></div>
+
+        <div x-show="open" x-transition class="relative w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
+            <flux:heading size="lg">{{ $editingTaskId ? 'Edit task' : 'New task' }}</flux:heading>
+
+            <form wire:submit="saveTask" class="mt-4 space-y-4">
+                <flux:input wire:model="taskTitle" label="Title" placeholder="What needs to be done?" />
+                <flux:textarea wire:model="taskDescription" label="Description" rows="2" />
+
+                <div class="grid grid-cols-2 gap-3">
+                    <flux:select wire:model="taskPriority" label="Priority">
+                        @foreach ($priorities as $p)
+                            <flux:select.option value="{{ $p->value }}">{{ $p->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:select wire:model="taskColumnStatus" label="Status">
+                        @foreach ($statuses as $s)
+                            <flux:select.option value="{{ $s->value }}">{{ $s->label() }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <flux:select wire:model="taskAssignee" label="Assignee" placeholder="Unassigned">
+                        <flux:select.option value="">Unassigned</flux:select.option>
+                        @foreach ($members as $member)
+                            <flux:select.option value="{{ $member->id }}">{{ $member->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
+                    <flux:input type="date" wire:model="taskDueDate" label="Due date" />
+                </div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <flux:button type="button" variant="ghost" @click="open = false">Cancel</flux:button>
+                    <flux:button type="submit" variant="primary">{{ $editingTaskId ? 'Save changes' : 'Add task' }}</flux:button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

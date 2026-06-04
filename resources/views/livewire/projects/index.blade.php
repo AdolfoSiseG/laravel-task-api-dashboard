@@ -168,7 +168,7 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
                  class="flex flex-col rounded-xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <h3 class="truncate font-semibold text-zinc-900 dark:text-white">{{ $project->name }}</h3>
+                        <a href="{{ route('projects.show', $project) }}" wire:navigate class="truncate font-semibold text-zinc-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400">{{ $project->name }}</a>
                         <flux:badge :color="$project->status->color()" size="sm" class="mt-1">{{ $project->status->label() }}</flux:badge>
                     </div>
                     <flux:dropdown position="bottom" align="end">
