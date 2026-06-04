@@ -132,13 +132,13 @@ class Project extends Model
      */
     public function progress(): int
     {
-        $total = (int) ($this->attributes['tasks_count'] ?? $this->tasks()->count());
+        $total = (int) ($this->tasks_count ?? $this->tasks()->count());
 
         if ($total === 0) {
             return 0;
         }
 
-        $completed = (int) ($this->attributes['completed_tasks_count']
+        $completed = (int) ($this->completed_tasks_count
             ?? $this->tasks()->where('status', TaskStatus::Done->value)->count());
 
         return (int) round($completed / $total * 100);

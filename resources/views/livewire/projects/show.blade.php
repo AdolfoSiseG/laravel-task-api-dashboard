@@ -91,7 +91,11 @@ new #[Layout('components.layouts.app')] class extends Component
             $task->update($attributes);
         } else {
             $this->authorize('view', $this->project);
-            $this->project->tasks()->create($attributes + ['created_by' => Auth::id()]);
+
+            // created_by and project_id are set server-side, never mass-assigned.
+            $task = new Task($attributes);
+            $task->created_by = Auth::id();
+            $this->project->tasks()->save($task);
         }
 
         $this->showTaskForm = false;
@@ -170,7 +174,7 @@ new #[Layout('components.layouts.app')] class extends Component
                 </div>
                 <div class="flex -space-x-2">
                     @foreach ($members->take(5) as $member)
-                        <span title="{{ $member->name }}" class="flex size-8 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-xs font-medium text-indigo-700 dark:border-zinc-800 dark:bg-indigo-500/20 dark:text-indigo-300">{{ $member->initials() }}</span>
+                        <x-user-avatar :user="$member" size="lg" class="border-2 border-white dark:border-zinc-800" />
                     @endforeach
                 </div>
             </div>
@@ -200,7 +204,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                     <flux:menu>
                                         @foreach ($statuses as $s)
                                             @if ($s->value !== $task->status->value)
-                                                <flux:menu.item wire:click="moveTask({{ $task->id }}, '{{ $s->value }}')">Move to {{ $s->label() }}</flux:menu.item>
+                                                <flux:menu.item wire:key="move-{{ $task->id }}-{{ $s->value }}" wire:click="moveTask({{ $task->id }}, '{{ $s->value }}')">Move to {{ $s->label() }}</flux:menu.item>
                                             @endif
                                         @endforeach
                                         <flux:menu.separator />
@@ -225,7 +229,7 @@ new #[Layout('components.layouts.app')] class extends Component
                                         ])>{{ $task->due_date->isoFormat('MMM D') }}</span>
                                     @endif
                                     @if ($task->assignee)
-                                        <span title="{{ $task->assignee->name }}" class="flex size-6 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-medium text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300">{{ $task->assignee->initials() }}</span>
+                                        <x-user-avatar :user="$task->assignee" size="sm" />
                                     @endif
                                 </div>
                             </div>
@@ -241,50 +245,43 @@ new #[Layout('components.layouts.app')] class extends Component
     </div>
 
     {{-- Task modal --}}
-    <div
-        x-data="{ open: @entangle('showTaskForm') }"
-        x-show="open"
-        x-cloak
-        @keydown.escape.window="open = false"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
-    >
-        <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" @click="open = false"></div>
+    <x-modal wire:model="showTaskForm" :title="$editingTaskId ? 'Edit task' : 'New task'">
+        <form wire:submit="saveTask" class="space-y-4">
+            <flux:input wire:model="taskTitle" label="Title" placeholder="What needs to be done?" />
+            <flux:textarea wire:model="taskDescription" label="Description" rows="2" />
 
-        <div x-show="open" x-transition class="relative w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900">
-            <flux:heading size="lg">{{ $editingTaskId ? 'Edit task' : 'New task' }}</flux:heading>
+            <div class="grid grid-cols-2 gap-3">
+                <flux:select wire:model="taskPriority" label="Priority">
+                    @foreach ($priorities as $p)
+                        <flux:select.option value="{{ $p->value }}">{{ $p->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:select wire:model="taskColumnStatus" label="Status">
+                    @foreach ($statuses as $s)
+                        <flux:select.option value="{{ $s->value }}">{{ $s->label() }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            </div>
 
-            <form wire:submit="saveTask" class="mt-4 space-y-4">
-                <flux:input wire:model="taskTitle" label="Title" placeholder="What needs to be done?" />
-                <flux:textarea wire:model="taskDescription" label="Description" rows="2" />
+            <div class="grid grid-cols-2 gap-3">
+                <flux:select wire:model="taskAssignee" label="Assignee" placeholder="Unassigned">
+                    <flux:select.option value="">Unassigned</flux:select.option>
+                    @foreach ($members as $member)
+                        <flux:select.option value="{{ $member->id }}">{{ $member->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+                <flux:input
+                    type="date"
+                    wire:model="taskDueDate"
+                    label="Due date"
+                    :min="$editingTaskId ? null : now()->toDateString()"
+                />
+            </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <flux:select wire:model="taskPriority" label="Priority">
-                        @foreach ($priorities as $p)
-                            <flux:select.option value="{{ $p->value }}">{{ $p->label() }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
-                    <flux:select wire:model="taskColumnStatus" label="Status">
-                        @foreach ($statuses as $s)
-                            <flux:select.option value="{{ $s->value }}">{{ $s->label() }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <flux:select wire:model="taskAssignee" label="Assignee" placeholder="Unassigned">
-                        <flux:select.option value="">Unassigned</flux:select.option>
-                        @foreach ($members as $member)
-                            <flux:select.option value="{{ $member->id }}">{{ $member->name }}</flux:select.option>
-                        @endforeach
-                    </flux:select>
-                    <flux:input type="date" wire:model="taskDueDate" label="Due date" />
-                </div>
-
-                <div class="flex justify-end gap-2 pt-2">
-                    <flux:button type="button" variant="ghost" @click="open = false">Cancel</flux:button>
-                    <flux:button type="submit" variant="primary">{{ $editingTaskId ? 'Save changes' : 'Add task' }}</flux:button>
-                </div>
-            </form>
-        </div>
-    </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <flux:button type="button" variant="ghost" x-on:click="open = false">Cancel</flux:button>
+                <flux:button type="submit" variant="primary" wire:target="saveTask" wire:loading.attr="disabled">{{ $editingTaskId ? 'Save changes' : 'Add task' }}</flux:button>
+            </div>
+        </form>
+    </x-modal>
 </div>

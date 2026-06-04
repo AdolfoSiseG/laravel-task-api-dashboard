@@ -33,8 +33,10 @@ class Task extends Model
     /** @use HasFactory<TaskFactory> */
     use HasFactory, SoftDeletes;
 
+    // project_id and created_by are intentionally NOT mass-assignable: they are set
+    // via the project relationship and explicitly from the authenticated user, so no
+    // request payload can move a task between projects or spoof its author.
     protected $fillable = [
-        'project_id',
         'title',
         'description',
         'assigned_to',
@@ -42,7 +44,6 @@ class Task extends Model
         'priority',
         'due_date',
         'completed_at',
-        'created_by',
     ];
 
     /**

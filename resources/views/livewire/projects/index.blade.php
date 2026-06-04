@@ -134,6 +134,8 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
     }
 }; ?>
 
+@use('Illuminate\Support\Str')
+
 <div class="space-y-6">
     {{-- Header --}}
     <div class="flex flex-wrap items-center justify-between gap-4">
@@ -162,7 +164,7 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
     </div>
 
     {{-- Grid --}}
-    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div class="grid gap-4 transition-opacity md:grid-cols-2 lg:grid-cols-3" wire:loading.class="opacity-50" wire:target="search,status">
         @forelse ($projects as $project)
             <div wire:key="project-{{ $project->id }}"
                  class="flex flex-col rounded-xl border border-zinc-200 bg-white p-5 transition hover:border-zinc-300 hover:shadow-sm dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600">
@@ -171,19 +173,21 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
                         <a href="{{ route('projects.show', $project) }}" wire:navigate class="truncate font-semibold text-zinc-900 hover:text-indigo-600 dark:text-white dark:hover:text-indigo-400">{{ $project->name }}</a>
                         <flux:badge :color="$project->status->color()" size="sm" class="mt-1">{{ $project->status->label() }}</flux:badge>
                     </div>
-                    <flux:dropdown position="bottom" align="end">
-                        <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" aria-label="Project actions" />
-                        <flux:menu>
-                            <flux:menu.item icon="pencil-square" wire:click="editProject({{ $project->id }})">Edit</flux:menu.item>
-                            <flux:menu.separator />
-                            <flux:menu.item
-                                icon="trash"
-                                variant="danger"
-                                wire:click="deleteProject({{ $project->id }})"
-                                wire:confirm="Delete this project and all of its tasks? This cannot be undone."
-                            >Delete</flux:menu.item>
-                        </flux:menu>
-                    </flux:dropdown>
+                    @if (auth()->id() === $project->user_id)
+                        <flux:dropdown position="bottom" align="end">
+                            <flux:button variant="ghost" size="sm" icon="ellipsis-horizontal" aria-label="Project actions" />
+                            <flux:menu>
+                                <flux:menu.item icon="pencil-square" wire:click="editProject({{ $project->id }})">Edit</flux:menu.item>
+                                <flux:menu.separator />
+                                <flux:menu.item
+                                    icon="trash"
+                                    variant="danger"
+                                    wire:click="deleteProject({{ $project->id }})"
+                                    wire:confirm="Delete this project and all of its tasks? This cannot be undone."
+                                >Delete</flux:menu.item>
+                            </flux:menu>
+                        </flux:dropdown>
+                    @endif
                 </div>
 
                 <p class="mt-3 line-clamp-2 min-h-[2.5rem] text-sm text-zinc-500 dark:text-zinc-400">
@@ -203,10 +207,7 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
                 <div class="mt-4 flex items-center justify-between border-t border-zinc-100 pt-4 dark:border-zinc-800">
                     <div class="flex -space-x-2">
                         @foreach ($project->members->take(4) as $member)
-                            <span
-                                title="{{ $member->name }}"
-                                class="flex size-7 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-xs font-medium text-indigo-700 dark:border-zinc-900 dark:bg-indigo-500/20 dark:text-indigo-300"
-                            >{{ $member->initials() }}</span>
+                            <x-user-avatar :user="$member" size="md" class="border-2 border-white dark:border-zinc-900" />
                         @endforeach
                         @if ($project->members_count > 4)
                             <span class="flex size-7 items-center justify-center rounded-full border-2 border-white bg-zinc-100 text-xs font-medium text-zinc-600 dark:border-zinc-900 dark:bg-zinc-700 dark:text-zinc-300">
@@ -215,7 +216,7 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
                         @endif
                     </div>
                     <span class="text-xs text-zinc-500 dark:text-zinc-400">
-                        {{ $project->tasks_count }} {{ \Illuminate\Support\Str::plural('task', $project->tasks_count) }}
+                        {{ $project->tasks_count }} {{ Str::plural('task', $project->tasks_count) }}
                     </span>
                 </div>
             </div>
@@ -235,36 +236,20 @@ new #[Layout('components.layouts.app')] #[Title('Projects')] class extends Compo
     </div>
 
     {{-- Create / edit modal --}}
-    <div
-        x-data="{ open: @entangle('showForm') }"
-        x-show="open"
-        x-cloak
-        @keydown.escape.window="open = false"
-        class="fixed inset-0 z-50 flex items-center justify-center p-4"
-    >
-        <div x-show="open" x-transition.opacity class="absolute inset-0 bg-zinc-900/50 backdrop-blur-sm" @click="open = false"></div>
+    <x-modal wire:model="showForm" :title="$editingId ? 'Edit project' : 'New project'">
+        <form wire:submit="save" class="space-y-4">
+            <flux:input wire:model="name" label="Name" placeholder="e.g. Website Redesign" />
+            <flux:textarea wire:model="description" label="Description" rows="3" placeholder="What is this project about?" />
+            <flux:select wire:model="projectStatus" label="Status">
+                @foreach ($statuses as $case)
+                    <flux:select.option value="{{ $case->value }}">{{ $case->label() }}</flux:select.option>
+                @endforeach
+            </flux:select>
 
-        <div
-            x-show="open"
-            x-transition
-            class="relative w-full max-w-lg rounded-xl border border-zinc-200 bg-white p-6 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
-        >
-            <flux:heading size="lg">{{ $editingId ? 'Edit project' : 'New project' }}</flux:heading>
-
-            <form wire:submit="save" class="mt-4 space-y-4">
-                <flux:input wire:model="name" label="Name" placeholder="e.g. Website Redesign" />
-                <flux:textarea wire:model="description" label="Description" rows="3" placeholder="What is this project about?" />
-                <flux:select wire:model="projectStatus" label="Status">
-                    @foreach ($statuses as $case)
-                        <flux:select.option value="{{ $case->value }}">{{ $case->label() }}</flux:select.option>
-                    @endforeach
-                </flux:select>
-
-                <div class="flex justify-end gap-2 pt-2">
-                    <flux:button type="button" variant="ghost" @click="open = false">Cancel</flux:button>
-                    <flux:button type="submit" variant="primary">{{ $editingId ? 'Save changes' : 'Create project' }}</flux:button>
-                </div>
-            </form>
-        </div>
-    </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <flux:button type="button" variant="ghost" x-on:click="open = false">Cancel</flux:button>
+                <flux:button type="submit" variant="primary" wire:target="save" wire:loading.attr="disabled">{{ $editingId ? 'Save changes' : 'Create project' }}</flux:button>
+            </div>
+        </form>
+    </x-modal>
 </div>
