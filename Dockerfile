@@ -12,6 +12,8 @@ WORKDIR /app
 COPY package.json package-lock.json vite.config.js ./
 RUN npm ci
 COPY resources ./resources
+# Tailwind v4 imports flux.css and scans vendor blade files (@source), so vendor must be present.
+COPY --from=vendor /app/vendor ./vendor
 RUN npm run build
 
 # ---- Runtime ----
@@ -25,8 +27,9 @@ COPY . .
 COPY --from=vendor /app/vendor ./vendor
 COPY --from=assets /app/public/build ./public/build
 
-# Run as a non-root user with writable framework directories.
-RUN addgroup -g 1000 app \
+# Ensure the framework's writable directories exist, then run as a non-root user.
+RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
+    && addgroup -g 1000 app \
     && adduser -u 1000 -G app -s /bin/sh -D app \
     && chown -R app:app storage bootstrap/cache
 USER app
@@ -35,4 +38,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Cache config/routes/views, apply migrations, then serve on the host-provided port.
-CMD ["sh", "-c", "php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT}"]
+CMD ["sh", "-c", "php artisan config:cache && php artisan view:cache && php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=${PORT}"]
