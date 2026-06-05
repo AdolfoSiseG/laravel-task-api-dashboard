@@ -15,6 +15,11 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Idempotent: only seed a fresh database, so this is safe to run on every boot/deploy.
+        if (User::query()->where('email', 'demo@example.com')->exists()) {
+            return;
+        }
+
         // Primary demo account, surfaced on the login screen ("Log in as demo").
         $demo = User::factory()->create([
             'name' => 'Demo User',

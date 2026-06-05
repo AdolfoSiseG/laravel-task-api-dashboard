@@ -9,7 +9,7 @@ A collaborative task-management app with a drag-and-drop Kanban board, built as 
 ![Tests](https://img.shields.io/badge/tests-53%20passing-3fb950)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-> **Live demo:** _coming soon_ · **Demo login:** `demo@example.com` / `password` (or just press **“Log in as demo”**)
+> **Live demo:** **<https://laravel-task-api-dashboard.onrender.com>** · **Demo login:** `demo@example.com` / `password` (or just press **“Log in as demo”**)
 
 ![TaskFlow dashboard](docs/screenshots/dashboard-dark.png)
 
