@@ -6,7 +6,7 @@ A collaborative task-management app with a drag-and-drop Kanban board, built as 
 ![Laravel 12](https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white)
 ![PHP 8.3](https://img.shields.io/badge/PHP-8.3-777BB4?logo=php&logoColor=white)
 ![Livewire 3](https://img.shields.io/badge/Livewire-3-FB70A9)
-![Tests](https://img.shields.io/badge/tests-50%20passing-3fb950)
+![Tests](https://img.shields.io/badge/tests-53%20passing-3fb950)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 > **Live demo:** _coming soon_ · **Demo login:** `demo@example.com` / `password` (or just press **“Log in as demo”**)
@@ -51,7 +51,7 @@ _Light, dark and system themes (appearance settings):_
 - **Strict Eloquent models** outside production (no lazy loading, no silently discarded attributes), so N+1s and typos fail loudly during development.
 - **Static analysis covers the Livewire/Volt components too** — Larastan analyses the single-file components where the CRUD/query/auth logic lives, not just plain classes.
 - **Accessible, reusable UI** — a focus-trapping modal component, labelled icon buttons and a drag-and-drop board that still works with the keyboard.
-- **50 feature tests** plus Pint and Larastan, all run in CI against a real MySQL service.
+- **53 tests** (feature + unit) plus Pint and Larastan, all run in CI against a real MySQL service.
 
 ## Getting started
 
