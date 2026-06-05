@@ -1,0 +1,44 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Connect this repo on Render; it reads this file, builds the Dockerfile and deploys.
+# Secrets (sync: false) are entered once in the Render dashboard.
+services:
+  - type: web
+    name: taskflow
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_NAME
+        value: TaskFlow
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        sync: false # paste a key from: php artisan key:generate --show
+      - key: APP_URL
+        sync: false # your https://<service>.onrender.com URL
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: DB_CONNECTION
+        value: mysql
+      - key: DB_PORT
+        value: "4000" # TiDB Cloud default port
+      - key: DB_HOST
+        sync: false # from TiDB Cloud connection details
+      - key: DB_DATABASE
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: MYSQL_ATTR_SSL_CA
+        value: /etc/ssl/certs/ca-certificates.crt # TiDB requires TLS

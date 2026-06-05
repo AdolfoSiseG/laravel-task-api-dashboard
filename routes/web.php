@@ -5,6 +5,9 @@ use Livewire\Volt\Volt;
 
 Route::redirect('/', 'dashboard')->name('home');
 
+// Lightweight health check for the host and the keep-alive monitor.
+Route::get('/health', fn () => response()->json(['status' => 'ok']))->name('health');
+
 Volt::route('dashboard', 'dashboard')
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
